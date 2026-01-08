@@ -88,7 +88,6 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		mode,
 		setMode,
 		alwaysAllowModeSwitch,
-		alwaysAllowUpdateTodoList,
 		customModes,
 		telemetrySetting,
 		hasSystemPromptOverride,
@@ -188,6 +187,20 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	useEffect(() => {
 		inputValueRef.current = inputValue
 	}, [inputValue])
+
+	// Compute whether auto-approval is paused (user is typing in a followup)
+	const isFollowUpAutoApprovalPaused = useMemo(() => {
+		return !!(inputValue && inputValue.trim().length > 0 && clineAsk === "followup")
+	}, [inputValue, clineAsk])
+
+	// Cancel auto-approval timeout when user starts typing
+	useEffect(() => {
+		// Only send cancel if there's actual input (user is typing)
+		// and we have a pending follow-up question
+		if (isFollowUpAutoApprovalPaused) {
+			vscode.postMessage({ type: "cancelAutoApproval" })
+		}
+	}, [isFollowUpAutoApprovalPaused])
 
 	useEffect(() => {
 		isMountedRef.current = true
@@ -387,6 +400,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					// an "ask" while ask is waiting for response.
 					switch (lastMessage.say) {
 						case "api_req_retry_delayed":
+						case "api_req_rate_limit_wait":
 							setSendingDisabled(true)
 							break
 						case "api_req_started":
@@ -944,6 +958,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				case "api_req_deleted":
 					return false
 				case "api_req_retry_delayed":
+				case "api_req_rate_limit_wait":
 					const last1 = modifiedMessages.at(-1)
 					const last2 = modifiedMessages.at(-2)
 					if (last1?.ask === "resume_task" && last2 === message) {
@@ -1001,7 +1016,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		// labeled as `user_feedback`.
 		if (lastMessage && messages.length > 1) {
 			if (
-				lastMessage.text && // has text
+				typeof lastMessage.text === "string" && // has text (must be string for startsWith)
 				(lastMessage.say === "text" || lastMessage.say === "completion_result") && // is a text message
 				!lastMessage.partial && // not a partial message
 				!lastMessage.text.startsWith("{") // not a json object
@@ -1272,6 +1287,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					onSuggestionClick={handleSuggestionClickInRow} // This was already stabilized
 					onBatchFileResponse={handleBatchFileResponse}
 					isFollowUpAnswered={messageOrGroup.isAnswered === true || messageOrGroup.ts === currentFollowUpTs}
+					isFollowUpAutoApprovalPaused={isFollowUpAutoApprovalPaused}
 					editable={
 						messageOrGroup.type === "ask" &&
 						messageOrGroup.ask === "tool" &&
@@ -1283,9 +1299,6 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 								if (messageOrGroup.text?.includes("updateTodoList")) {
 									tool = { tool: "updateTodoList" }
 								}
-							}
-							if (tool.tool === "updateTodoList" && alwaysAllowUpdateTodoList) {
-								return false
 							}
 							return tool.tool === "updateTodoList" && enableButtons && !!primaryButtonText
 						})()
@@ -1304,7 +1317,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 			handleSuggestionClickInRow,
 			handleBatchFileResponse,
 			currentFollowUpTs,
-			alwaysAllowUpdateTodoList,
+			isFollowUpAutoApprovalPaused,
 			enableButtons,
 			primaryButtonText,
 		],

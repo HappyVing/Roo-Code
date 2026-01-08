@@ -14,6 +14,7 @@ import type {
 	OrganizationAllowList,
 	ShareVisibility,
 	QueuedMessage,
+	SerializedCustomToolDefinition,
 } from "@roo-code/types"
 
 import { GitCommit } from "../utils/git"
@@ -93,9 +94,6 @@ export interface ExtensionMessage {
 		| "deleteCustomModeCheck"
 		| "currentCheckpointUpdated"
 		| "checkpointInitWarning"
-		| "showHumanRelayDialog"
-		| "humanRelayResponse"
-		| "humanRelayCancel"
 		| "browserToolEnabled"
 		| "browserConnectionResult"
 		| "remoteBrowserEnabled"
@@ -132,6 +130,8 @@ export interface ExtensionMessage {
 		| "interactionRequired"
 		| "browserSessionUpdate"
 		| "browserSessionNavigate"
+		| "claudeCodeRateLimits"
+		| "customToolsResult"
 	text?: string
 	payload?: any // Add a generic payload for now, can refine later
 	// Checkpoint warning message
@@ -217,6 +217,7 @@ export interface ExtensionMessage {
 	browserSessionMessages?: ClineMessage[] // For browser session panel updates
 	isBrowserSessionActive?: boolean // For browser session panel updates
 	stepIndex?: number // For browserSessionNavigate: the target step index to display
+	tools?: SerializedCustomToolDefinition[] // For customToolsResult
 }
 
 export type ExtensionState = Pick<
@@ -233,13 +234,11 @@ export type ExtensionState = Pick<
 	| "alwaysAllowWriteOutsideWorkspace"
 	| "alwaysAllowWriteProtected"
 	| "alwaysAllowBrowser"
-	| "alwaysApproveResubmit"
 	| "alwaysAllowMcp"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
 	| "alwaysAllowFollowupQuestions"
 	| "alwaysAllowExecute"
-	| "alwaysAllowUpdateTodoList"
 	| "followupAutoApproveTimeoutMs"
 	| "allowedCommands"
 	| "deniedCommands"
@@ -286,9 +285,11 @@ export type ExtensionState = Pick<
 	| "openRouterImageGenerationSelectedModel"
 	| "includeTaskHistoryInEnhance"
 	| "reasoningBlockCollapsed"
+	| "enterBehavior"
 	| "includeCurrentTime"
 	| "includeCurrentCost"
 	| "maxGitStatusFiles"
+	| "requestDelaySeconds"
 > & {
 	version: string
 	clineMessages: ClineMessage[]
@@ -301,13 +302,13 @@ export type ExtensionState = Pick<
 	taskHistory: HistoryItem[]
 
 	writeDelayMs: number
-	requestDelaySeconds: number
 
 	enableCheckpoints: boolean
 	checkpointTimeout: number // Timeout for checkpoint initialization in seconds (default: 15)
 	maxOpenTabsContext: number // Maximum number of VSCode open tabs to include in context (0-500)
 	maxWorkspaceFiles: number // Maximum number of files to include in current working directory details (0-500)
 	showRooIgnoredFiles: boolean // Whether to show .rooignore'd files in listings
+	enableSubfolderRules: boolean // Whether to load rules from subdirectories
 	maxReadFileLine: number // Maximum number of lines to read from a file before truncating
 	maxImageFileSize: number // Maximum size of image files to process in MB
 	maxTotalImageSize: number // Maximum total size for all images in a single read operation in MB
@@ -332,9 +333,11 @@ export type ExtensionState = Pick<
 
 	cloudUserInfo: CloudUserInfo | null
 	cloudIsAuthenticated: boolean
+	cloudAuthSkipModel?: boolean // Flag indicating auth completed without model selection (user should pick 3rd-party provider)
 	cloudApiUrl?: string
 	cloudOrganizations?: CloudOrganizationMembership[]
 	sharingEnabled: boolean
+	publicSharingEnabled: boolean
 	organizationAllowList: OrganizationAllowList
 	organizationSettingsVersion?: number
 
@@ -347,7 +350,6 @@ export type ExtensionState = Pick<
 	profileThresholds: Record<string, number>
 	hasOpenedModeSelector: boolean
 	openRouterImageApiKey?: string
-	openRouterUseMiddleOutTransform?: boolean
 	messageQueue?: QueuedMessage[]
 	lastShownAnnouncementId?: string
 	apiModelId?: string
@@ -357,6 +359,7 @@ export type ExtensionState = Pick<
 	remoteControlEnabled: boolean
 	taskSyncEnabled: boolean
 	featureRoomoteControlEnabled: boolean
+	claudeCodeIsAuthenticated?: boolean
 	debug?: boolean
 }
 
@@ -370,7 +373,6 @@ export interface ClineSayTool {
 		| "fetchInstructions"
 		| "listFilesTopLevel"
 		| "listFilesRecursive"
-		| "listCodeDefinitionNames"
 		| "searchFiles"
 		| "switchMode"
 		| "newTask"
@@ -432,6 +434,7 @@ export const browserActions = [
 	"scroll_up",
 	"resize",
 	"close",
+	"screenshot",
 ] as const
 
 export type BrowserAction = (typeof browserActions)[number]
